@@ -1,0 +1,10 @@
+# Build outputs (upload these to GitHub Releases instead)
+*.exe
+*.zip
+*.crx
+*.pem
+
+# OS junk
+Thumbs.db
+desktop.ini
+.DS_Store

@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>X Tweets Cleaner · Setup</title>
+<link rel="icon" href="extension/icons/icon32.png">
+<style>
+  @font-face { font-family: Plex; src: url("extension/fonts/ibm-plex-sans-latin-400-normal.woff2"); font-weight: 400; }
+  @font-face { font-family: Plex; src: url("extension/fonts/ibm-plex-sans-latin-600-normal.woff2"); font-weight: 600; }
+  @font-face { font-family: Plex; src: url("extension/fonts/ibm-plex-sans-latin-700-normal.woff2"); font-weight: 700; }
+  :root { --text:#efe9ff; --dim:#a99cc9; --accent:#a78bfa; --accent2:#7c3aed; --line:rgba(167,139,250,.25); }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; color: var(--text); font: 16px/1.6 Plex, system-ui, sans-serif;
+    background: radial-gradient(90% 60% at 50% -10%, #3b1f7a 0%, #1b1036 45%, #0e0820 100%) fixed;
+    display: flex; justify-content: center; padding: 56px 20px;
+  }
+  main { width: 100%; max-width: 640px; }
+  header { display: flex; gap: 16px; align-items: center; margin-bottom: 28px; }
+  header img { width: 64px; height: 64px; border-radius: 16px; filter: drop-shadow(0 0 18px rgba(139,92,246,.6)); }
+  h1 { margin: 0; font-size: 28px; }
+  .sub { margin: 0; color: var(--dim); }
+  ol { list-style: none; padding: 0; margin: 0; counter-reset: s; }
+  li {
+    counter-increment: s; position: relative; padding: 18px 20px 18px 66px; margin-bottom: 12px;
+    background: rgba(255,255,255,.04); border: 1px solid var(--line); border-radius: 18px;
+  }
+  li::before {
+    content: counter(s); position: absolute; left: 18px; top: 18px; width: 32px; height: 32px; border-radius: 50%;
+    display: grid; place-items: center; font-weight: 700;
+    background: linear-gradient(135deg, var(--accent), var(--accent2)); box-shadow: 0 0 14px rgba(124,58,237,.5);
+  }
+  li b { color: #fff; }
+  code {
+    background: rgba(0,0,0,.35); border: 1px solid var(--line); padding: 2px 8px; border-radius: 8px;
+    font-family: Consolas, monospace; font-size: 14px; color: #ddd0ff; user-select: all;
+  }
+  .path { display: flex; gap: 8px; margin-top: 10px; align-items: center; flex-wrap: wrap; }
+  .path code { word-break: break-all; }
+  button {
+    font: inherit; font-weight: 600; border: 0; border-radius: 999px; padding: 7px 16px; cursor: pointer; color: #fff;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+  }
+  .note { color: var(--dim); font-size: 14px; margin-top: 22px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <img src="extension/icons/icon128.png" alt="">
+    <div>
+      <h1>X Tweets Cleaner is installed</h1>
+      <p class="sub">A few quick steps to turn it on in Brave (or Chrome / Edge).</p>
+    </div>
+  </header>
+
+  <ol>
+    <li>In Brave, open <code>brave://extensions</code> (Chrome: <code>chrome://extensions</code>, Edge: <code>edge://extensions</code>).
+      <div class="path"><button data-copy="brave://extensions">Copy address</button></div>
+    </li>
+    <li>Turn on <b>Developer mode</b> (switch in the top-right corner).</li>
+    <li>Click <b>Load unpacked</b> and choose this folder:
+      <div class="path"><code id="dir">…</code><button id="copyDir">Copy path</button></div>
+    </li>
+    <li>Pin the extension, open <b>x.com</b>, then click the icon and press <b>Preview</b> first.</li>
+  </ol>
+
+  <p class="note">Keep the folder where it is: Brave loads the extension from it. To remove it, click Remove in the extensions page, then uninstall X Tweets Cleaner from Windows Settings → Apps.</p>
+</main>
+
+<script>
+  // Work out the extension folder from this page's own location
+  let p = decodeURIComponent(location.pathname).replace(/^\/([A-Za-z]:)/, "$1");
+  p = p.substring(0, p.lastIndexOf("/")) + "/extension";
+  if (/^[A-Za-z]:/.test(p)) p = p.replace(/\//g, "\\");
+  document.getElementById("dir").textContent = p;
+
+  function copy(text, btn) {
+    const t = document.createElement("textarea");
+    t.value = text; document.body.appendChild(t); t.select();
+    document.execCommand("copy"); t.remove();
+    const old = btn.textContent; btn.textContent = "Copied ✓";
+    setTimeout(() => (btn.textContent = old), 1500);
+  }
+  document.getElementById("copyDir").onclick = (e) => copy(p, e.target);
+  document.querySelectorAll("[data-copy]").forEach((b) => (b.onclick = () => copy(b.dataset.copy, b)));
+</script>
+</body>
+</html>

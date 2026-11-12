@@ -1,0 +1,56 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install NSIS (if missing)
+        shell: pwsh
+        run: |
+          if (-not (Get-Command makensis -ErrorAction SilentlyContinue) -and -not (Test-Path "C:\Program Files (x86)\NSIS\makensis.exe")) {
+            choco install nsis -y --no-progress
+          }
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $nsis = (Get-Command makensis -ErrorAction SilentlyContinue).Source
+          if (-not $nsis) { $nsis = "C:\Program Files (x86)\NSIS\makensis.exe" }
+          Push-Location installer
+          & $nsis XTweetsCleaner.nsi
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Pop-Location
+
+      - name: Build extension zip
+        shell: pwsh
+        run: Compress-Archive -Path extension\* -DestinationPath x-tweets-cleaner-extension.zip
+
+      - name: Publish release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = if ($env:GITHUB_REF_TYPE -eq "tag") { $env:GITHUB_REF_NAME } else { "v1.0.0" }
+          $exe = Get-ChildItem installer\XTweetsCleaner-Setup-*.exe | Select-Object -First 1
+          $notes = @"
+          ## X Tweets Cleaner $tag
+
+          **Windows:** download ``$($exe.Name)``, run it, and follow the setup guide it opens.
+          **Manual install:** download ``x-tweets-cleaner-extension.zip``, unzip it, then in ``brave://extensions`` turn on Developer mode and click **Load unpacked**.
+
+          - Delete your replies, your posts, or both
+          - Optionally undo your reposts
+          - Preview mode before deleting
+          - 4-second human-like pacing
+          "@
+          gh release create $tag $exe.FullName x-tweets-cleaner-extension.zip --title "X Tweets Cleaner $tag" --notes $notes

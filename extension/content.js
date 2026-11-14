@@ -1,6 +1,6 @@
-// X Tweets Cleaner — content script
-// Runs on https://x.com/<you>/with_replies and repeats the clicks you'd do by hand:
-// "..." menu -> Delete -> Confirm   (and Repost -> Undo repost for reposts).
+// X Tweets Cleaner content script.
+// Runs on the signed-in user's Replies timeline and performs the selected cleanup
+// action through X's visible controls: open the post menu, choose Delete, and confirm.
 
 (() => {
   if (window.__xTweetsCleanerLoaded) return;
@@ -16,22 +16,31 @@
 
   const state = {
     running: false,
-    mode: "replies",       // "replies" | "posts" | "all"
+    mode: "replies",       // Selects which of the user's replies and posts are eligible.
     undoReposts: false,
     previewOnly: false,
     delayMs: 4000,
+    dateFilterEnabled: false,
+    dateFrom: "",
+    dateTo: "",
     deleted: 0,
     reposts: 0,
     skipped: 0,
+    dateExcluded: 0,
+    dateUnknown: 0,
     errors: 0,
     status: "Idle",
   };
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-  // 4s base + up to 50% random extra, so the rhythm doesn't look robotic
+  // Add a small random variation so actions do not run at perfectly fixed intervals.
   const humanDelay = (ms) => ms + Math.floor(Math.random() * ms * 0.5);
+  let countedDateExcluded = new Set();
+  let countedDateUnknown = new Set();
+  let handledTweets = new Set();
+  let observedTweetKeys = new Set();
 
-  // ---------- on-page status panel ----------
+  // ---------- On-page status panel ----------
   let panel;
   function ensurePanel() {
     if (panel && document.body.contains(panel)) return panel;
@@ -58,13 +67,14 @@
       <div style="color:${C.dim};margin-top:2px">${verb}: <b style="color:${C.text}">${state.deleted}</b>
         ${state.undoReposts ? ` · Reposts: <b style="color:${C.text}">${state.reposts}</b>` : ""}
         · Skipped: ${state.skipped} · Errors: ${state.errors}</div>
+      ${state.dateFilterEnabled ? `<div style="color:${C.dim};margin-top:3px">Date range: excluded ${state.dateExcluded} · unknown dates ${state.dateUnknown}</div>` : ""}
       ${state.running ? `<button id="xtc-stop" style="margin-top:10px;background:linear-gradient(135deg,${C.accent},${C.accent2});color:#fff;border:0;border-radius:999px;padding:5px 16px;cursor:pointer;font-weight:600">Stop</button>` : ""}`;
     const btn = p.querySelector("#xtc-stop");
     if (btn) btn.onclick = () => stop("Stopped");
   }
   function setStatus(s) { state.status = s; render(); }
 
-  // ---------- helpers ----------
+  // ---------- Timeline and tweet helpers ----------
   function myHandle() {
     const a = document.querySelector('a[data-testid="AppTabBar_Profile_Link"]');
     return a ? a.getAttribute("href").replace("/", "").toLowerCase() : null;
@@ -83,7 +93,8 @@
     return REPLYING_WORDS.some((w) => text.includes(w));
   }
 
-  // On the Replies tab, a reply sits directly under the post it answers.
+  // On the Replies timeline, X often places a reply directly after the post it answers.
+  // Use that neighboring post as a fallback when localized reply text is unavailable.
   function isReply(article, me) {
     if (hasReplyingTo(article)) return true;
     const cell = article.closest('[data-testid="cellInnerDiv"]');
@@ -95,8 +106,8 @@
 
   function classify(article, me) {
     if (state.undoReposts && isMyRepost(article)) return "repost";
-    if (authorOf(article) !== me) return null;          // someone else's post
-    if (hasSocialContext(article)) return null;         // pinned, etc. — left alone
+    if (authorOf(article) !== me) return null;          // Never act on another user's post.
+    if (hasSocialContext(article)) return null;         // Leave contextual items, such as pins, alone.
     const reply = isReply(article, me);
     if (state.mode === "all") return "delete";
     if (state.mode === "replies") return reply ? "delete" : null;
@@ -104,7 +115,69 @@
     return null;
   }
 
+  function tweetKey(article) {
+    // Status IDs stay stable when the timeline re-renders the same tweet.
+    const link = [...article.querySelectorAll('a[href*="/status/"]')]
+      .find((a) => /\/status\/\d+/.test(a.getAttribute("href") || ""));
+    const match = link?.getAttribute("href")?.match(/\/status\/(\d+)/);
+    return match ? `status:${match[1]}` : article;
+  }
+
+  function noteNewTweets() {
+    let added = 0;
+    for (const article of document.querySelectorAll('article[data-testid="tweet"]')) {
+      const key = tweetKey(article);
+      if (observedTweetKeys.has(key)) continue;
+      observedTweetKeys.add(key);
+      added++;
+    }
+    return added;
+  }
+
+  function publicationDate(article) {
+    // Prefer machine-readable timestamps; fall back to other date text exposed by X.
+    const time = article.querySelector("time");
+    const candidates = [time?.getAttribute("datetime"), time?.getAttribute("title"), time?.getAttribute("aria-label"), time?.textContent];
+    for (const candidate of candidates) {
+      if (!candidate) continue;
+      const value = candidate.trim();
+      const parsed = new Date(value);
+      if (!Number.isNaN(parsed.getTime())) return parsed;
+    }
+    return null;
+  }
+
+  function rangeBounds() {
+    // Treat the selected end date as inclusive by using the start of the next day.
+    const [fy, fm, fd] = (state.dateFrom || "").split("-").map(Number);
+    const [ty, tm, td] = (state.dateTo || "").split("-").map(Number);
+    return {
+      from: fy ? new Date(fy, fm - 1, fd).getTime() : -Infinity,
+      to: ty ? new Date(ty, tm - 1, td + 1).getTime() : Infinity,
+    };
+  }
+
+  function dateEligibility(article) {
+    if (!state.dateFilterEnabled) return "eligible";
+    const date = publicationDate(article);
+    if (!date) return "unknown";
+    const bounds = rangeBounds();
+    const time = date.getTime();
+    return time >= bounds.from && time < bounds.to ? "eligible" : "outside";
+  }
+
+  function noteDateSkip(article, reason) {
+    const key = tweetKey(article);
+    const set = reason === "outside" ? countedDateExcluded : countedDateUnknown;
+    if (set.has(key)) return;
+    set.add(key);
+    if (reason === "outside") state.dateExcluded++;
+    else state.dateUnknown++;
+  }
+
   function findTargets(me) {
+    // Mark each visible article as handled or skipped so repeated scans do not
+    // keep reconsidering the same DOM node.
     const out = [];
     for (const article of document.querySelectorAll('article[data-testid="tweet"]')) {
       if (article.dataset.xtcDone) continue;
@@ -114,6 +187,20 @@
         if (authorOf(article) === me) state.skipped++;
         continue;
       }
+      const key = tweetKey(article);
+      if (state.dateFilterEnabled) {
+        if (handledTweets.has(key)) {
+          article.dataset.xtcDone = "duplicate";
+          continue;
+        }
+      }
+      const dateResult = dateEligibility(article);
+      if (dateResult !== "eligible") {
+        noteDateSkip(article, dateResult);
+        article.dataset.xtcDone = dateResult === "outside" ? "date-outside" : "date-unknown";
+        continue;
+      }
+      if (state.dateFilterEnabled) handledTweets.add(key);
       out.push({ article, kind });
     }
     return out;
@@ -135,7 +222,8 @@
       const t = (it.innerText || "").trim().toLowerCase();
       if (DELETE_WORDS.some((w) => t === w || t.startsWith(w))) return it;
     }
-    for (const it of items) { // fallback: X colours Delete red
+    // If the menu label is localized or unexpected, use X's red destructive-action color.
+    for (const it of items) {
       const span = it.querySelector("span");
       if (span && getComputedStyle(span).color === "rgb(244, 33, 46)") return it;
     }
@@ -175,7 +263,7 @@
     await sleep(800);
   }
 
-  // ---------- main loop ----------
+  // ---------- Timeline scan and cleanup loop ----------
   async function run() {
     const me = myHandle();
     if (!me) return stop("Couldn't detect your account. Are you logged in?");
@@ -184,25 +272,49 @@
     }
 
     let emptyScrolls = 0;
+    let stalledScrolls = 0;
+    noteNewTweets();
     let errorsInRow = 0;
 
     while (state.running) {
       const targets = findTargets(me);
 
       if (targets.length === 0) {
-        if (++emptyScrolls > 8) return stop(state.previewOnly ? "Scan finished" : "Done. Nothing left to clean.");
+        // Keep scrolling until the timeline stops yielding new items, or the
+        // regular non-date scan has made several empty passes.
+        if (!state.dateFilterEnabled && ++emptyScrolls > 8) {
+          return stop(state.previewOnly ? "Scan finished" : "Done. Nothing left to clean.");
+        }
+        if (state.dateFilterEnabled && stalledScrolls >= 15) {
+          return stop(state.previewOnly ? "Scan finished. No more posts loaded." : "Done. No more posts loaded.");
+        }
         setStatus("Scrolling for more…");
         window.scrollBy(0, window.innerHeight * 1.5);
         await sleep(2000);
+        if (state.dateFilterEnabled) {
+          if (noteNewTweets() > 0) stalledScrolls = 0;
+          else stalledScrolls++;
+        }
         continue;
       }
       emptyScrolls = 0;
+      stalledScrolls = 0;
 
       for (const { article, kind } of targets) {
         if (!state.running) break;
 
+        // Recheck the date immediately before acting in case the queued item changed.
+        const dateResult = dateEligibility(article);
+        if (dateResult !== "eligible") {
+          noteDateSkip(article, dateResult);
+          article.dataset.xtcDone = dateResult === "outside" ? "date-outside" : "date-unknown";
+          render();
+          continue;
+        }
+
         if (state.previewOnly) {
           article.dataset.xtcDone = "preview";
+          article.dataset.xtcPreviewOutline = "true";
           article.style.outline = `3px solid ${kind === "repost" ? "#38bdf8" : C.accent}`;
           article.style.outlineOffset = "-3px";
           kind === "repost" ? state.reposts++ : state.deleted++;
@@ -244,21 +356,48 @@
       if (state.previewOnly) {
         window.scrollBy(0, window.innerHeight * 1.5);
         await sleep(1500);
+        if (state.dateFilterEnabled) {
+          if (noteNewTweets() > 0) stalledScrolls = 0;
+          else stalledScrolls++;
+        }
       }
     }
   }
 
   function start(opts) {
     if (state.running) return;
+    if (opts.dateFilterEnabled && opts.dateFrom && opts.dateTo && opts.dateFrom > opts.dateTo) {
+      state.running = false;
+      state.status = "Invalid date range: From Date must be on or before To Date.";
+      render();
+      return;
+    }
+    if (opts.dateFilterEnabled) {
+      for (const article of document.querySelectorAll('article[data-testid="tweet"]')) {
+        delete article.dataset.xtcDone;
+        if (article.dataset.xtcPreviewOutline) {
+          article.style.removeProperty("outline");
+          article.style.removeProperty("outline-offset");
+          delete article.dataset.xtcPreviewOutline;
+        }
+      }
+    }
     Object.assign(state, {
       running: true,
       mode: ["replies", "posts", "all"].includes(opts.mode) ? opts.mode : "replies",
       undoReposts: !!opts.undoReposts,
       previewOnly: !!opts.previewOnly,
+      dateFilterEnabled: !!opts.dateFilterEnabled,
+      dateFrom: typeof opts.dateFrom === "string" ? opts.dateFrom : "",
+      dateTo: typeof opts.dateTo === "string" ? opts.dateTo : "",
       delayMs: Math.max(2000, Number(opts.delayMs) || 4000),
-      deleted: 0, reposts: 0, skipped: 0, errors: 0,
+      deleted: 0, reposts: 0, skipped: 0, dateExcluded: 0, dateUnknown: 0, errors: 0,
       status: "Starting…",
     });
+    countedDateExcluded = new Set();
+    countedDateUnknown = new Set();
+    handledTweets = new Set();
+    observedTweetKeys = new Set();
     render();
     run().catch((e) => stop("Error: " + e.message));
   }

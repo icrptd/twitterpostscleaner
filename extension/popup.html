@@ -26,6 +26,19 @@
 
   <label class="check"><input type="checkbox" id="reposts"><span>Also undo my reposts</span></label>
 
+  <section class="date-filter">
+    <div class="date-heading">
+      <div class="label">Date Range Filter</div>
+      <label class="toggle"><input type="checkbox" id="dateEnabled"><span>Enabled</span></label>
+    </div>
+    <div class="date-fields" id="dateFields">
+      <label>From Date<input id="dateFrom" type="date"></label>
+      <label>To Date<input id="dateTo" type="date"></label>
+      <button id="clearDates" class="ghost clear-dates" type="button">Clear dates</button>
+      <div id="dateError" class="date-error" role="alert" hidden>From Date must be on or before To Date.</div>
+    </div>
+  </section>
+
   <div class="label">Pause between actions</div>
   <div class="delay">
     <input id="delay" type="number" min="2" max="60" step="1" value="4">

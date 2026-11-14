@@ -15,7 +15,7 @@
 
 * { box-sizing: border-box; }
 body {
-  width: 320px; margin: 0; padding: 16px 16px 14px;
+  width: 320px; max-height: 600px; overflow-y: auto; margin: 0; padding: 16px 16px 14px;
   font: 13px/1.5 "Plex", system-ui, sans-serif; color: var(--text);
   background: radial-gradient(120% 70% at 50% -10%, #3b1f7a 0%, var(--bg2) 45%, var(--bg) 100%);
   position: relative; overflow: hidden;
@@ -55,6 +55,19 @@ h1 { font-size: 16px; font-weight: 700; margin: 0; letter-spacing: .2px; }
 
 .check { display: flex; align-items: center; gap: 8px; margin-top: 10px; cursor: pointer; }
 .check input { accent-color: var(--accent); width: 15px; height: 15px; }
+
+.date-filter { margin-top: 9px; padding: 1px 10px 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
+.date-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.date-heading .label { margin: 8px 0; color: var(--text); }
+.toggle { display: flex; align-items: center; gap: 5px; color: var(--dim); font-size: 11px; cursor: pointer; }
+.toggle input { accent-color: var(--accent); }
+.date-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.date-fields[hidden] { display: none; }
+.date-fields label { display: grid; gap: 3px; color: var(--dim); font-size: 11px; }
+.date-fields input[type="date"] { width: 100%; min-width: 0; padding: 5px 4px; border-radius: 8px; font: inherit; color: var(--text); color-scheme: dark; background: var(--bg2); border: 1px solid var(--line); }
+.clear-dates { grid-column: 1 / -1; padding: 5px 8px; font-size: 11px; }
+.date-error { grid-column: 1 / -1; color: #fca5a5; font-size: 11px; }
+.date-error[hidden] { display: none; }
 
 .delay { display: flex; align-items: center; gap: 8px; }
 .delay input {

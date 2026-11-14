@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="sky"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+
+  <header>
+    <img src="icons/icon48.png" alt="" width="36" height="36">
+    <div>
+      <h1>X Tweets Cleaner</h1>
+      <p class="sub">Tidy up your X account</p>
+    </div>
+  </header>
+
+  <button id="go" class="ghost">Open my Replies tab →</button>
+
+  <div class="label">What to clean</div>
+  <div class="modes" id="modes">
+    <label><input type="radio" name="mode" value="replies" checked><span><b>Replies</b><small>Only your replies</small></span></label>
+    <label><input type="radio" name="mode" value="posts"><span><b>Posts</b><small>Only your own posts</small></span></label>
+    <label><input type="radio" name="mode" value="all"><span><b>Everything</b><small>Replies and posts</small></span></label>
+  </div>
+
+  <label class="check"><input type="checkbox" id="reposts"><span>Also undo my reposts</span></label>
+
+  <section class="date-filter">
+    <div class="date-heading">
+      <div class="label">Date Range Filter</div>
+      <label class="toggle"><input type="checkbox" id="dateEnabled"><span>Enabled</span></label>
+    </div>
+    <div class="date-fields" id="dateFields">
+      <label>From Date<input id="dateFrom" type="date"></label>
+      <label>To Date<input id="dateTo" type="date"></label>
+      <button id="clearDates" class="ghost clear-dates" type="button">Clear dates</button>
+      <div id="dateError" class="date-error" role="alert" hidden>From Date must be on or before To Date.</div>
+    </div>
+  </section>
+
+  <div class="label">Pause between actions</div>
+  <div class="delay">
+    <input id="delay" type="number" min="2" max="60" step="1" value="4">
+    <span>seconds <small>(+ random extra so it looks human)</small></span>
+  </div>
+
+  <div class="row">
+    <button id="preview" class="soft">Preview</button>
+    <button id="start" class="primary">Clean now</button>
+  </div>
+  <button id="stop" class="ghost wide">Stop</button>
+
+  <div id="status" class="status">Idle</div>
+  <p class="warn">Deleting can't be undone. Run <b>Preview</b> first to outline what would be removed.</p>
+
+  <script src="popup.js"></script>
+</body>
+</html>
